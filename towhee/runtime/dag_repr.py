@@ -88,8 +88,6 @@ class DAGRepr:
 
     @staticmethod
     def get_all_inputs(nodes: Dict[str, NodeRepr], top_sort: list):
-        if '_input' not in nodes.keys():
-            raise ValueError('The DAG Nodes is not valid, it does not have key `_input`.')
         all_inputs = dict((name, nodes['_input'].inputs) for name in nodes)
         for name in top_sort[1:]:
             for n in nodes[name].next_nodes:
@@ -131,15 +129,13 @@ class DAGRepr:
 
         edge_schemas = {}
         for d in schema:
-            if d not in outputs:
-                iter_type = 'map'
             if d not in ahead_schemas:
                 edge_schemas[d] = SchemaRepr.from_dag(d, iter_type, None, 1)
-            else:
-                count = ahead_schemas[d].count
-                if d in outputs:
-                    count = count + 1
+            elif d in outputs:
+                count = ahead_schemas[d].count + 1
                 edge_schemas[d] = SchemaRepr.from_dag(d, iter_type, ahead_schemas[d].type, count)
+            else:
+                edge_schemas[d] = SchemaRepr.from_dag(d, 'map', ahead_schemas[d].type, ahead_schemas[d].count)
         edge = {'schema': edge_schemas, 'data': [(s, t.type) for s, t in edge_schemas.items()]}
         return edge
 

@@ -110,7 +110,7 @@ class TestDAGRepr(unittest.TestCase):
 
     def test_check_schema_equal(self):
         towhee_dag_test = copy.deepcopy(self.dag_dict)
-        towhee_dag_test['_input']['inputs'] = ('x',)
+        towhee_dag_test['_output']['inputs'] = ('c',)
         with self.assertRaises(ValueError):
             DAGRepr.from_dict(towhee_dag_test)
 
@@ -155,7 +155,8 @@ class TestDAGRepr(unittest.TestCase):
 
         self.assertEqual(edges[0]['data'], [('a', ColumnType.SCALAR), ('b', ColumnType.SCALAR)])
         self.assertEqual(edges[1]['data'], [('c', ColumnType.QUEUE)])
-        self.assertEqual(edges[2]['data'], [('a', ColumnType.QUEUE), ('b', ColumnType.SCALAR)])
+        self.assertTrue(edges[2]['data'] in [[('a', ColumnType.QUEUE), ('b', ColumnType.SCALAR)],
+                                             [('b', ColumnType.SCALAR), ('a', ColumnType.QUEUE)]])
         self.assertEqual(edges[3]['data'], [('d', ColumnType.SCALAR)])
         self.assertEqual(edges[4]['data'], [('e', ColumnType.SCALAR)])
 

@@ -122,8 +122,8 @@ class TestDAGRepr(unittest.TestCase):
 
     def test_edges(self):
         """
-        _input[(a,b)->(a,b)]->op1[(a,)->(c,)]->op2[(a,b)->(d,)]->_output[(d,e)->(d,e)]
-                                |------->add_node[(c,)->(e,)]------^
+        _input[(a,b)-(a,b)]->op1[(a,)-(c,)]->op2[(a,b)-(d,)]->_output[(d,e)-(d,e)]
+                                |------->add_node[(c,)-(e,)]------^
         """
         towhee_dag_test = copy.deepcopy(self.dag_dict)
         towhee_dag_test['op1']['next_nodes'] = ['add_node', 'op2']
@@ -173,7 +173,7 @@ class TestDAGRepr(unittest.TestCase):
 
     def test_edges_count(self):
         """
-        _input[(a,b)-(a,b)]->op1[(a,)-(c,)]->op2[(a,b)-(d,)]->op4[(d,e)-(d,e)]->_output[(a, d,e)-(a, d,e)]
+        _input[(a,b)]->op1[(a,)-(c,)]->op2[(a, b)-(a, d)]->op4[(d,e)-(d,e)]->_output[(a, d, e)]
                                 |------->op3[(c,)-(e,)]----------^
         """
         towhee_dag_test = copy.deepcopy(self.dag_dict)

@@ -147,7 +147,7 @@ class DAGRepr:
 
         top_sort = DAGRepr.get_top_sort(nodes)
         input_next = nodes['_input'].next_nodes
-        if len(nodes['_input'].next_nodes) == 1:
+        if len(input_next) == 1:
             nodes['_input'].out_edges = [out_id]
             nodes[input_next[0]].in_edges = [out_id]
             top_sort = top_sort[1:]

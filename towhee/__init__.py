@@ -28,6 +28,7 @@ from towhee.functional import (
 
 from towhee import dc2
 from towhee.dc2 import pipe
+from towhee.serve import Builder, build_docker_image as build_docker_image2
 
 
 # Place all functions that are meant to be called by towhee.func() here aftering importing them.
@@ -62,7 +63,9 @@ __all__ = [
     'default_cache',
     # the new interface
     'pipe',
-    'dc2'
+    'dc2',
+    'Builder',
+    'build_docker_image2',
 ]
 
 __import__('pkg_resources').declare_namespace(__name__)

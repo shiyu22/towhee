@@ -24,10 +24,8 @@ RUN apt-get install git-lfs && \
 
 WORKDIR /workspace
 
-RUN mkdir -p /workspace/models
-
 COPY ./towhee_pipeline_dag.pickle /workspace/towhee_pipeline_dag.pickle
 COPY ./towhee_server_config.json /workspace/towhee_server_config.json
 
-RUN triton_builder2 /workspace/towhee_pipeline_dag.pickle /workspace/towhee_models /workspace/towhee_server_config.json
+RUN triton_builder2 /workspace/towhee_pipeline_dag.pickle /workspace/models /workspace/towhee_server_config.json
 

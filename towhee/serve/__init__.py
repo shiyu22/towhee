@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 
 from towhee.utils.log import engine_log
-from .triton.pipeline_builder import PipelineBuilder as TritonModelBuilder
+from .triton.pipeline_builder import Builder as TritonModelBuilder
 from .triton.docker_builder import DockerBuilder as TritonDockerBuilder
 
 
@@ -50,7 +51,11 @@ class Builder:
     """
     def __init__(self, pipeline: 'RuntimePipeline', model_root: str, format_priority: list, server: str = 'triton'):
         if server == 'triton':
-            self._builder = TritonModelBuilder(pipeline, model_root, format_priority)
+            self.dag_repr = copy.deepcopy(pipeline.dag_repr)
+            server_conf = {
+                'format_priority': format_priority
+            }
+            self._builder = TritonModelBuilder(self.dag_repr, model_root, server_conf)
         else:
             engine_log.error('Unknown server type: %s.', server)
             self._builder = None

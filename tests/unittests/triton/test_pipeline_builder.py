@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import unittest
+import copy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from towhee.runtime import pipe, ops
 from towhee.runtime.dag_repr import DAGRepr
 from towhee.serve.triton.constant import PIPELINE_NAME
-from towhee.serve.triton.pipeline_builder import Builder, PipelineBuilder
+from towhee.serve.triton.pipeline_builder import Builder
 from towhee.utils.thirdparty.dail_util import dill as pickle
 
 
@@ -35,8 +36,12 @@ class TestPipelineBuilder(unittest.TestCase):
         )
 
         model_name = 'towhee.test-resnet18-1'
+        dag_repr = copy.deepcopy(p.dag_repr)
+        server_conf = {
+            'format_priority': ['onnx']
+        }
         with TemporaryDirectory(dir='.') as root:
-            self.assertTrue(PipelineBuilder(p, root, ['onnx']).build())
+            self.assertTrue(Builder(dag_repr, root, server_conf).build())
 
             pipe_dag_file = root + '/' + PIPELINE_NAME + '/1/pipe.pickle'
             pipe_model_file = root + '/' + PIPELINE_NAME + '/1/model.py'
@@ -60,8 +65,13 @@ class TestPipelineBuilder(unittest.TestCase):
             .map(('num', 'arr'), 'ret', lambda x, y: x + y)
             .output('ret')
         )
+
+        dag_repr = copy.deepcopy(p.dag_repr)
+        server_conf = {
+            'format_priority': ['onnx']
+        }
         with TemporaryDirectory(dir='.') as root:
-            self.assertTrue(PipelineBuilder(p, root, ['onnx']).build())
+            self.assertTrue(Builder(dag_repr, root, server_conf).build())
 
             pipe_dag_file = root + '/' + PIPELINE_NAME + '/1/pipe.pickle'
             pipe_model_file = root + '/' + PIPELINE_NAME + '/1/model.py'
@@ -107,11 +117,7 @@ class TestPipelineBuilder(unittest.TestCase):
             },
         }
         config = {
-            'image_name': 'image_embedding:v1',
-            'inference_server': 'triton',
-            'server_config': {
-                'format_priority': ['onnx'],
-            }
+            'format_priority': ['onnx'],
         }
         dag_repr = DAGRepr.from_dict(dag_dict)
 

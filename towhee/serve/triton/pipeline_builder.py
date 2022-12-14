@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from typing import Dict
-from copy import deepcopy
 
 from towhee.utils.log import engine_log
 from towhee.runtime import ops, AcceleratorConf
@@ -23,40 +22,22 @@ from towhee.serve.triton.model_to_triton import ModelToTriton
 from towhee.serve.triton.pipe_to_triton import PipeToTriton
 
 
-class PipelineBuilder:
-    """
-    Builder triton model with towhee runtime pipeline.
-
-    Args:
-        pipeline: RuntimePipeline
-            Towhee pipeline ready to call.
-        model_root: str
-            The path to build the server.
-        format_priority: list
-            The format priority for model, such as ['onnx', 'tensorrt'].
-    """
-    def __init__(self, pipeline: 'RuntimePipeline', model_root: str, format_priority: list):
-        self._dag_repr = deepcopy(pipeline.dag_repr)
-        self._model_root = model_root
-        self._server_conf = {
-            'server_config': {
-                'format_priority': format_priority
-            }
-        }
-        self._builder = Builder(self._dag_repr, self._model_root, self._server_conf)
-
-    def build(self):
-        return self._builder.build()
-
-
 class Builder:
     """
     Build triton models from towhee pipeline.
+
+    Args:
+        dag_repr: DAGRepr
+            DAGRepr for pipeline.
+        model_root: str
+            The path to build the server.
+        server_conf: dict
+            The config for triton, such as {'format_priority': ['onnx', 'tensorrt']}.
     """
 
-    def __init__(self, dag_repr: 'DAGRepr', model_root: str, conf: Dict):
+    def __init__(self, dag_repr: 'DAGRepr', model_root: str, server_conf: Dict):
         self.dag_repr = dag_repr
-        self._server_conf = conf.get(constant.SERVER_CONFIG, {})
+        self._server_conf = server_conf
         self._model_root = model_root
 
     @staticmethod

@@ -16,9 +16,11 @@
 import uuid
 from copy import deepcopy
 
+from towhee.operator.nop import NOPNodeOperator
 from towhee.runtime.operator_manager import OperatorAction
 from towhee.runtime.factory import _OperatorWrapper
 from towhee.runtime.runtime_pipeline import RuntimePipeline
+from towhee.runtime.dag_repr import DAGRepr
 from towhee.runtime.constants import (
     MapConst,
     WindowAllConst,
@@ -123,7 +125,7 @@ class Pipeline:
         Args:
             input_schema (tuple): The input column/s of fn.
             output_schema (tuple): The output column/s of fn.
-            fn (Operation | lambda | callable): The action to perform on the input_schema.
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the input_schema.
             config (dict, optional): Config for the map. Defaults to None.
 
         Returns:
@@ -137,6 +139,11 @@ class Pipeline:
         """
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
+
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(input_schema, output_schema, fn)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            return Pipeline(dag_dict, uid_last)
 
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
@@ -200,7 +207,7 @@ class Pipeline:
         Args:
             input_schema (tuple): The input column/s of fn.
             output_schema (tuple): The output column/s of fn.
-            fn (Operation | lambda | callable): The action to perform on the input_schema.
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the input_schema.
             config (dict, optional): Config for the flat_map. Defaults to None.
 
         Returns:
@@ -221,6 +228,13 @@ class Pipeline:
         """
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
+
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(input_schema, output_schema, fn)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            dag_dict[uid_last]['iter_info'] = {'type': FlatMapConst.name,
+                                               'param': None}
+            return Pipeline(dag_dict, uid_last)
 
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
@@ -247,7 +261,7 @@ class Pipeline:
             input_schema (tuple): The input column/s before filter.
             output_schema (tuple): The output columns after filter, so the length of input_schema equals to the output_schema.
             filter_columns (str | tuple): Which columns to filter on.
-            fn (Operation | lambda | callable): The action to perform on the filter_colums.
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the filter_colums.
             config (dict, optional): Config for the filter. Defaults to None.
 
         Returns:
@@ -268,6 +282,15 @@ class Pipeline:
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
         filter_columns = self._check_schema(filter_columns)
+
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(filter_columns, filter_columns, fn, input_schema+output_schema)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            dag_dict[uid_last]['iter_info'] = {'type': FilterConst.name,
+                                               'param': {FilterConst.param.filter_by: dag_dict[uid_last]['inputs']}}
+            dag_dict[uid_last]['inputs'] = input_schema
+            dag_dict[uid_last]['outputs'] = output_schema
+            return Pipeline(dag_dict, uid_last)
 
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
@@ -295,7 +318,7 @@ class Pipeline:
             output_schema (tuple): The output column/s of fn.
             size (int): How many rows per window.
             step (int): How many rows to iterate after each window.
-            fn (Operation | lambda | callable): The action to perform on the input_schema after window.
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the input_schema after window.
             config (dict, optional): Config for the window map. Defaults to None
 
         Returns:
@@ -315,6 +338,14 @@ class Pipeline:
         """
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
+
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(input_schema, output_schema, fn)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            dag_dict[uid_first]['iter_info'] = {'type': WindowConst.name,
+                                                'param': {WindowConst.param.size: size,
+                                                          WindowConst.param.step: step}}
+            return Pipeline(dag_dict, uid_last)
 
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
@@ -341,7 +372,7 @@ class Pipeline:
         Args:
             input_schema (tuple): The input column/s of fn.
             output_schema (tuple): The output column/s of fn.
-            fn (Operation | lambda | callable): The action to perform on the input_schema after window all data.
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the input_schema after window all data.
             config (dict, optional): Config for the window_all. Defaults to None
 
         Returns:
@@ -358,6 +389,13 @@ class Pipeline:
         """
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
+
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(input_schema, output_schema, fn)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            dag_dict[uid_first]['iter_info'] = {'type': WindowAllConst.name,
+                                                'param': None}
+            return Pipeline(dag_dict, uid_last)
 
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
@@ -386,7 +424,7 @@ class Pipeline:
             timestamp_col (str): Which column to use for creating windows.
             size (int): size of window.
             step (int): how far to progress window.
-            fn (Operation | lambda | callable): The action to perform on the input_schema
+            fn (Operator | RuntimePipeline | lambda | callable): The action to perform on the input_schema
                                                 after window the date with timestamp_col.
             config (dict, optional): Config for the time window. Defaults to None.
 
@@ -411,6 +449,15 @@ class Pipeline:
         output_schema = self._check_schema(output_schema)
         input_schema = self._check_schema(input_schema)
 
+        if isinstance(fn, RuntimePipeline):
+            dag_dict, uid_first, uid_last = self.rebuild_dag(input_schema, output_schema, fn, timestamp_col)
+            dag_dict[self._clo_node]['next_nodes'].append(uid_first)
+            dag_dict[uid_first]['iter_info'] = {'type': TimeWindowConst.name,
+                                                'param': {TimeWindowConst.param.time_range_sec: size,
+                                                          TimeWindowConst.param.time_step_sec: step,
+                                                          TimeWindowConst.param.timestamp_col: timestamp_col}}
+            return Pipeline(dag_dict, uid_last)
+
         uid = uuid.uuid4().hex
         fn_action = self._to_action(fn)
         dag_dict = deepcopy(self._dag)
@@ -429,6 +476,128 @@ class Pipeline:
         }
         dag_dict[self._clo_node]['next_nodes'].append(uid)
         return Pipeline(dag_dict, uid)
+
+    def rebuild_dag(self, input_schema, output_schema, runtime_pipeline, param_cols=None):
+        src_dag = deepcopy(self._dag)
+        pipe_dag = deepcopy(runtime_pipeline.dag_repr.dag_dict)
+        pipe_dag.pop('_input')
+        pipe_top_sort = DAGRepr.get_top_sort(runtime_pipeline.dag_repr.nodes)[1:]
+
+        # update with `param_cols`
+        if param_cols:
+            self._update_dup_param_cols(pipe_dag, param_cols, pipe_top_sort)
+        # update with `input_schema`
+        self._update_dup_out_schema(pipe_dag, input_schema, pipe_top_sort)
+        self._update_dup_in_schema(pipe_dag, input_schema, pipe_top_sort)
+        # update with `output_schema`
+        uid = uuid.uuid4().hex
+        self._update_output_schema(pipe_dag, output_schema, pipe_top_sort, uid)
+
+        src_dag.update(pipe_dag)
+        return src_dag, pipe_top_sort[0], uid
+
+    @staticmethod
+    def _update_dup_out_schema(dag, input_schema, top_sort):
+        for schema in input_schema:
+            dup_output_schema = None
+            sort_node = deepcopy(top_sort)
+            while sort_node:
+                node_name = sort_node.pop(0)
+                if schema in dag[node_name]['outputs']:
+                    dup_output_schema = schema
+                    dag[node_name]['outputs'] = Pipeline._replace_schema(dag[node_name]['outputs'], schema)
+                    Pipeline._update_cols(dag[node_name]['iter_info']['type'], dag[node_name]['iter_info']['param'], schema)
+                    break
+            if dup_output_schema:
+                for node_name in sort_node:
+                    if schema in dag[node_name]['inputs']:
+                        dag[node_name]['inputs'] = Pipeline._replace_schema(dag[node_name]['inputs'], schema)
+                    if schema in dag[node_name]['outputs']:
+                        dag[node_name]['outputs'] = Pipeline._replace_schema(dag[node_name]['outputs'], schema)
+                    Pipeline._update_cols(dag[node_name]['iter_info']['type'], dag[node_name]['iter_info']['param'], schema)
+
+    @staticmethod
+    def _update_dup_in_schema(dag, input_schema, top_sort):
+        ori_input_schema = dag[top_sort[0]]['inputs']
+        if len(input_schema) == len(ori_input_schema):
+            dict_ori_input = dict((x, y) for x, y in zip(ori_input_schema, input_schema))
+            for schema in ori_input_schema:
+                for node_name in top_sort:
+                    if schema in dag[node_name]['inputs']:
+                        dag[node_name]['inputs'] = Pipeline._replace_schema(dag[node_name]['inputs'], schema, dict_ori_input[schema])
+                    Pipeline._update_cols(dag[node_name]['iter_info']['type'], dag[node_name]['iter_info']['param'], schema, dict_ori_input[schema])
+                    if schema in dag[node_name]['outputs']:
+                        break
+        else:
+            assert len(input_schema) == 1 or len(ori_input_schema) == 1
+            input_ori_set = set(ori_input_schema)
+            for node_name in top_sort:
+                input_node_set = set(dag[node_name]['inputs'])
+                if input_ori_set & input_node_set == input_ori_set:
+                    dag[node_name]['inputs'] = Pipeline._replace_schema(dag[node_name]['inputs'], ori_input_schema, input_schema)
+                Pipeline._update_cols(dag[node_name]['iter_info']['type'], dag[node_name]['iter_info']['param'], ori_input_schema, input_schema)
+                if input_ori_set & set(dag[node_name]['outputs']) == input_ori_set:
+                    break
+
+    @staticmethod
+    def _update_output_schema(dag, output_schema, top_sort, uid):
+        output_info = dag.pop('_output')
+        dag[top_sort[-2]]['next_nodes'].remove('_output')
+        fn_action = Pipeline._to_action(NOPNodeOperator())
+        dag[uid] = {
+            'inputs': output_info['outputs'],
+            'outputs': output_schema,
+            'op_info': fn_action.serialize(),
+            'iter_info': {
+                'type': MapConst.name,
+                'param': None
+            },
+            'config': None,
+            'next_nodes': [],
+        }
+        dag[top_sort[-2]]['next_nodes'].append(uid)
+
+    @staticmethod
+    def _update_dup_param_cols(dag, param_cols, top_sort):
+        for schema in param_cols:
+            for node_name in top_sort:
+                if schema in dag[node_name]['inputs']:
+                    dag[node_name]['inputs'] = Pipeline._replace_schema(dag[node_name]['inputs'], schema)
+                if schema in dag[node_name]['outputs']:
+                    dag[node_name]['outputs'] = Pipeline._replace_schema(dag[node_name]['outputs'], schema)
+                Pipeline._update_cols(dag[node_name]['iter_info']['type'], dag[node_name]['iter_info']['param'], schema)
+
+    @staticmethod
+    def _update_cols(node_type, node_param, schema, new_schema=None):
+        if node_type == FilterConst.name and schema in node_param[FilterConst.param.filter_by] \
+                or node_type == FilterConst.name and new_schema and not isinstance(new_schema, str) \
+                and set(node_param[FilterConst.param.filter_by]) & set(schema) == set(schema):
+            node_param[FilterConst.param.filter_by] = Pipeline._replace_schema(node_param[FilterConst.param.filter_by], schema, new_schema)
+        elif node_type == TimeWindowConst.name and schema in node_param[TimeWindowConst.param.timestamp_col] \
+                or node_type == TimeWindowConst.name and new_schema and not isinstance(new_schema, str) \
+                and set(node_param[TimeWindowConst.param.timestamp_col]) & set(schema) == set(schema):
+            node_param[TimeWindowConst.param.timestamp_col] = Pipeline._replace_schema(node_param[TimeWindowConst.param.timestamp_col],
+                                                                                       schema, new_schema)[0]
+
+    @staticmethod
+    def _replace_schema(schema, ori_name, new_name=None):
+        if new_name is None:
+            new_name = ori_name + '_bak'
+        else:
+            new_name = Pipeline._to_string(new_name)
+        ori_name = Pipeline._to_string(ori_name)
+        new_schema = Pipeline._to_string(schema).replace(ori_name, new_name)
+        new_schema = new_schema.split(',')
+        return tuple(new_schema)
+
+    @staticmethod
+    def _to_string(schema):
+        if isinstance(schema, str):
+            return schema
+        str_schema = ''
+        for x in schema:
+            str_schema += x + ','
+        return str_schema[:-1]
 
     @staticmethod
     def _to_action(fn):

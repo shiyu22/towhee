@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import types
+from copy import deepcopy
 from typing import Dict, Any, Set, List, Tuple
 
 from towhee.runtime.check_utils import check_set, check_node_iter
@@ -33,6 +34,7 @@ class DAGRepr:
                               1: {'data': [(b, ColumnType.SCALAR), (c, ColumnType.SCALAR)], 'schema': {'b', SchemaRepr, 'c', SchemaRepr}}
                               2: {'data': [(a, ColumnType.SCALAR), (c, ColumnType.SCALAR)], 'schema': {'a', SchemaRepr, 'c', SchemaRepr}}
                             }
+        dag_dict(`Dict`): The dag dict.
     """
     def __init__(self, nodes: Dict[str, NodeRepr], edges: Dict[int, Dict], dag_dict: Dict[str, Any] = None):
         self._nodes = nodes
@@ -273,6 +275,7 @@ class DAGRepr:
         Returns:
             DAGRepr
         """
+        dag_dict = deepcopy(dag)
         def _get_name(val):
             if val['op_info']['type'] == OPType.CALLABLE:
                 if isinstance(val['op_info']['operator'], types.FunctionType):
@@ -323,4 +326,4 @@ class DAGRepr:
             nodes[key] = NodeRepr.from_dict(key, val)
         DAGRepr.check_nodes(nodes)
         dag_nodes, schema_edges = DAGRepr.set_edges(nodes)
-        return DAGRepr(dag_nodes, schema_edges, dag)
+        return DAGRepr(dag_nodes, schema_edges, dag_dict)

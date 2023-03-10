@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import types
+import uuid
 from copy import deepcopy
 from typing import Dict, Any, Set, List, Tuple
 
@@ -21,6 +22,7 @@ from towhee.runtime.node_repr import NodeRepr
 from towhee.runtime.schema_repr import SchemaRepr
 from towhee.runtime.constants import FilterConst, TimeWindowConst, OPType, InputConst, OutputConst
 from towhee.runtime.node_config import TowheeConfig
+from towhee.runtime.operator_manager.operator_utils import get_nop_node_dict
 
 
 class DAGRepr:
@@ -284,7 +286,7 @@ class DAGRepr:
                     name = type(val['op_info']['operator']).__name__
             elif val['op_info']['type'] == OPType.LAMBDA:
                 name = 'lambda'
-            elif val['op_info']['type'] == OPType.HUB:
+            elif val['op_info']['type'] in [OPType.HUB, OPType.BUILTIN]:
                 fn = val['op_info']['operator']
                 if isinstance(fn, str):
                     name = fn
@@ -327,3 +329,99 @@ class DAGRepr:
         DAGRepr.check_nodes(nodes)
         dag_nodes, schema_edges = DAGRepr.set_edges(nodes)
         return DAGRepr(dag_nodes, schema_edges, dag_dict)
+
+    @staticmethod
+    def rebuild_dag(dag_dict, input_schema, output_schema, runtime_pipeline, param_cols=None):
+        src_dag = deepcopy(dag_dict)
+        pipe_dag = deepcopy(runtime_pipeline.dag_repr.dag_dict)
+
+        schemas = input_schema
+        if param_cols:
+            schemas += (param_cols,) if isinstance(param_cols, str) else param_cols
+        for uid, node in src_dag.items():
+            schemas += node['inputs'] + node['outputs']
+
+        # update the duplicate schemas in pipe_dag
+        DAGRepr._rename_schemas(pipe_dag, set(schemas))
+        if len(input_schema) != len(pipe_dag['_input']['inputs']):
+            DAGRepr._rename_group_schemas(pipe_dag, pipe_dag['_input']['inputs'], input_schema)
+        # update input node to pipe_dag
+        uid_in = uuid.uuid4().hex
+        DAGRepr._update_input(pipe_dag, input_schema, uid_in)
+        # update output node to pipe_dag
+        uid_out = uuid.uuid4().hex
+        DAGRepr._update_output(pipe_dag, output_schema, uid_out)
+
+        src_dag.update(pipe_dag)
+        return src_dag, uid_in, uid_out
+
+    @staticmethod
+    def _update_input(dag, input_schema, uid):
+        _input_info = dag.pop('_input')
+        dag[uid] = get_nop_node_dict(input_schema, _input_info['inputs'])
+        dag[uid]['next_nodes'] += _input_info['next_nodes']
+
+    @staticmethod
+    def _update_output(dag, output_schema, uid):
+        _output_info = dag.pop('_output')
+        dag[uid] = get_nop_node_dict(_output_info['outputs'], output_schema)
+        for _, node in dag.items():
+            if '_output' in node['next_nodes']:
+                node['next_nodes'].remove('_output')
+                node['next_nodes'].append(uid)
+
+    @staticmethod
+    def _rename_group_schemas(dag, ori_input_schema, input_schema):
+        assert len(input_schema) == 1 or len(ori_input_schema) == 1
+        input_ori_set = set(ori_input_schema)
+        for uid, node in dag.items():
+            input_set = set(node['inputs'])
+            output_set = set(node['outputs'])
+            if input_ori_set & input_set == input_ori_set:
+                node['inputs'] = DAGRepr._replace_schema(node['inputs'], ori_input_schema, input_schema)
+            DAGRepr._replace_cols(node['iter_info']['type'], node['iter_info']['param'], ori_input_schema, input_schema)
+            if input_ori_set & output_set == input_ori_set and uid != '_input':
+                break
+
+    @staticmethod
+    def _rename_schemas(dag, schemas):
+        for schema in schemas:
+            for _, node in dag.items():
+                if schema in node['inputs']:
+                    node['inputs'] = DAGRepr._replace_schema(node['inputs'], schema)
+                if schema in node['outputs']:
+                    node['outputs'] = DAGRepr._replace_schema(node['outputs'], schema)
+                DAGRepr._replace_cols(node['iter_info']['type'], node['iter_info']['param'], schema)
+
+    @staticmethod
+    def _replace_cols(node_type, node_param, schema, new_schema=None):
+        if node_type == FilterConst.name and schema in node_param[FilterConst.param.filter_by] \
+                or node_type == FilterConst.name and new_schema and not isinstance(new_schema, str) \
+                and set(node_param[FilterConst.param.filter_by]) & set(schema) == set(schema):
+            node_param[FilterConst.param.filter_by] = DAGRepr._replace_schema(node_param[FilterConst.param.filter_by], schema, new_schema)
+        elif node_type == TimeWindowConst.name and schema in node_param[TimeWindowConst.param.timestamp_col] \
+                or node_type == TimeWindowConst.name and new_schema and not isinstance(new_schema, str) \
+                and set(node_param[TimeWindowConst.param.timestamp_col]) & set(schema) == set(schema):
+            node_param[TimeWindowConst.param.timestamp_col] = DAGRepr._replace_schema(node_param[TimeWindowConst.param.timestamp_col],
+                                                                                      schema, new_schema)[0]
+
+    @staticmethod
+    def _replace_schema(schema, ori_name, new_name=None):
+        if not new_name:
+            new_name = ori_name + '_bak'
+            new_schema = [new_name if name == ori_name else name for name in schema]
+        else:
+            ori_name = DAGRepr._to_string(ori_name)
+            new_name = DAGRepr._to_string(new_name)
+            new_schema = DAGRepr._to_string(schema).replace(ori_name, new_name)
+            new_schema = new_schema.split(',')
+        return tuple(new_schema)
+
+    @staticmethod
+    def _to_string(schema):
+        if isinstance(schema, str):
+            return schema
+        str_schema = ''
+        for x in schema:
+            str_schema += x + ','
+        return str_schema[:-1]

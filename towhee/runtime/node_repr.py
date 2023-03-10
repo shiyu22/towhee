@@ -221,16 +221,8 @@ class NodeRepr:
         Returns:
             NodeRepr object.
         """
-
-        check_keys(node, {'inputs', 'outputs', 'iter_info', 'next_nodes'})
+        check_keys(node, {'inputs', 'outputs', 'iter_info', 'next_nodes', 'op_info', 'config'})
         iter_repr = IterationRepr.from_dict(node['iter_info'])
-
         config = NodeConfig.from_dict(node['config'])
-
-        if uid in [InputConst.name, OutputConst.name] or node['iter_info']['type'] == ConcatConst.name:
-            op_repr = OperatorRepr.from_dict({'operator': uid, 'type': 'hub', 'init_args': None, 'init_kws': None, 'tag': 'main'})
-            return NodeRepr(uid, node['inputs'], node['outputs'], iter_repr, op_repr, config, node['next_nodes'])
-        else:
-            check_keys(node, {'op_info', 'config'})
-            op_repr = OperatorRepr.from_dict(node['op_info'])
-            return NodeRepr(uid, node['inputs'], node['outputs'], iter_repr, op_repr, config, node['next_nodes'])
+        op_repr = OperatorRepr.from_dict(node['op_info'])
+        return NodeRepr(uid, node['inputs'], node['outputs'], iter_repr, op_repr, config, node['next_nodes'])

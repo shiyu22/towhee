@@ -215,3 +215,16 @@ class TestDAGPipeline(unittest.TestCase):
              )
         res = p(4).to_list()
         self.assertEqual(res, [[10], [50], [40]])
+
+    def test_concat_pipeline(self):
+        p_0 = pipe.input('a', 'b', 'c')
+        p_1 = p_0.map('a', 'd', lambda x: x + 1)
+        p_2 = p_0.map(('b', 'c'), 'e', lambda x, y: x - y)
+        p_3 = p_2.concat(p_1).output('d', 'e')
+
+        p = (pipe.input('x', 'y', 'z')
+             .map(('x', 'y', 'z'), 'x', p_3)
+             .output('x')
+             )
+        res = p(1, 2, 3).to_list()
+        self.assertEqual(res, [[(2, -1)]])

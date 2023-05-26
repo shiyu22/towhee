@@ -66,6 +66,10 @@ def sentence_embedding(config=None):
         config = SentenceSimilarityConfig()
 
     allow_triton, emb_op = _get_embedding_op(config)
+    if hasattr(config, 'dim'):
+        config.dim = 384
+        # config.dim = emb_op.get_op().dimension
+
     op_config = {}
     if allow_triton:
         if config.device >= 0:

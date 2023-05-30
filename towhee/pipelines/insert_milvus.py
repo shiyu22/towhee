@@ -27,6 +27,8 @@ class MilvusInsertConfig:
         self.collection_name = None
         self.user = None
         self.password = None
+        self.collection_schema = None
+        self.index_params = None
 
 
 @AutoPipes.register
@@ -34,10 +36,12 @@ def milvus_insert_pipe(config):
     return (
         pipe.input('row')
         .map('row', 'mr', ops.ann_insert.milvus_client(host=config.host,
-                                                     port=config.port,
-                                                     collection_name=config.collection_name,
-                                                     user=config.user,
-                                                     password=config.password
-                                                     ))
+                                                       port=config.port,
+                                                       collection_name=config.collection_name,
+                                                       user=config.user,
+                                                       password=config.password,
+                                                       collection_schema=config.collection_schema,
+                                                       index_params=config.index_params,
+                                                       ))
         .output('mr')
     )
